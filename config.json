@@ -1,0 +1,35 @@
+{
+  "api": {
+    "api_key": "xxx",
+    "base_url": "xxx",
+    "model": "xxx",
+    "timeout": 1200.0
+  },
+  "paths": {
+    "work_dir": "C:\\Users\\xxx\\agent_work",
+    "task_dir": "C:\\Users\\xxx\\task",
+    "prompt_file": "prompt.txt"
+  },
+  "agent": {
+    "save_chat_count": 20,
+    "initial_context_messages": 5
+  },
+  "file_execution": {
+    "read_max_length": 10000,
+    "read_limit_extensions": [".txt", ".log", ".csv"],
+    "allowed_read_extensions": [".md", ".py", ".txt", ".log", ".csv", ".json", ".html", ".css", ".js", ".yaml", ".yml"],
+    "default_encoding": "utf-8"
+  },
+  "program_execution": {
+    "default_timeout": 60,
+    "monitor_interval": 0.5,
+    "feedback_check_interval": 10,
+    "output_buffer_limit": 2000
+  },
+  "logging": {
+    "log_file": "agent_run.log",
+    "log_level": "INFO",
+    "log_format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    "log_date_format": "%Y-%m-%d %H:%M:%S"
+  }
+}
