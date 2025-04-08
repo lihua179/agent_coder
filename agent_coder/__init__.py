@@ -6,3 +6,4 @@
 @describe:自定义描述
 """
 from .agent import AutoCoder
+from .tool import logger

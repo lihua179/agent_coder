@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional # Added Optional
 from .chat_api import ChatAPI
 from .file_exec import FileExecutor
 from .program_exec import ParallelExecutor, ProgramCheck
+from .tool import logger
 from .data_struct import (
     Parser,
     OperationResponse,
@@ -22,45 +23,7 @@ from .data_struct import (
     FeedbackStatus
 )
 
-# --- Logging Setup ---
-logger = logging.getLogger(__name__) # Module-level logger
 
-def setup_logging(config: Dict[str, Any]):
-    """Configures logging based on the provided configuration."""
-    log_config = config.get('logging', {})
-    log_level_str = log_config.get('log_level', 'INFO').upper()
-    log_level = getattr(logging, log_level_str, logging.INFO)
-    log_format = log_config.get('log_format', '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    log_date_format = log_config.get('log_date_format', '%Y-%m-%d %H:%M:%S')
-    log_file = log_config.get('log_file') # Log file path is optional
-
-    formatter = logging.Formatter(log_format, datefmt=log_date_format)
-
-    # Clear existing handlers to avoid duplicate logs if re-configured
-    if logger.hasHandlers():
-        logger.handlers.clear()
-
-    # Configure console handler
-    ch = logging.StreamHandler()
-    ch.setFormatter(formatter)
-    logger.addHandler(ch)
-
-    # Configure file handler if log_file is specified
-    if log_file:
-        try:
-            # Ensure log directory exists if log_file path includes directories
-            log_dir = os.path.dirname(log_file)
-            if log_dir and not os.path.exists(log_dir):
-                os.makedirs(log_dir)
-            fh = logging.FileHandler(log_file, encoding='utf-8')
-            fh.setFormatter(formatter)
-            logger.addHandler(fh)
-            logger.info(f"Logging to file: {log_file}")
-        except Exception as e:
-            logger.error(f"Failed to configure file logging to {log_file}: {e}")
-
-    logger.setLevel(log_level)
-    logger.info(f"Logging initialized. Level: {log_level_str}")
 
 
 # --- Configuration Loading ---
@@ -93,8 +56,9 @@ def extract_json_content(ai_response: str) -> Dict[str, Any]:
     返回:
     Dict[str, Any]: 提取的结构化字段字典。
     """
+    # ai_response=ai_response.replace('```json','```')
     # 使用正则表达式提取JSON内容
-    match = re.search(r'#####--\s*(.*?)\s*--#####', ai_response, re.DOTALL)
+    match = re.search(r'```json\s*(.*?)\s*end```', ai_response, re.DOTALL)
 
     if match:
         json_content = match.group(1)  # 提取匹配的内容
@@ -103,10 +67,10 @@ def extract_json_content(ai_response: str) -> Dict[str, Any]:
             structured_data = json.loads(json_content)
             return structured_data
         except json.JSONDecodeError as e:
-            raise ValueError(f"无法正确解析提取的JSON内容，确保其为有效的JSON格式（####--json内容--####）。{e}")
+            raise ValueError(f"无法正确解析提取的JSON内容，确保其为有效的JSON格式（```jsonxxx内容end```）。{e}")
     else:
         # Keep original error message for consistency if needed, or improve it
-        raise ValueError("未找到有效的JSON结构化内容（单个），确保其为有效的JSON格式（#####--json内容--#####）。")
+        raise ValueError("未找到有效的JSON结构化内容（单个），确保其为有效的JSON格式（```json字典内容xxxend```）。")
 
 
 def extract_json_list(ai_response: str) -> List[Dict[str, Any]]:
@@ -119,27 +83,32 @@ def extract_json_list(ai_response: str) -> List[Dict[str, Any]]:
     返回:
     List[Dict[str, Any]]: 包含提取的结构化字段字典的列表。
     """
-    pattern = r'#####--(.*?)--#####'
+    # ai_response = ai_response.replace("```json", 'end```')
+    pattern = r'```json(.*?)end```'
     matches = re.findall(pattern, ai_response, re.DOTALL)
-
+    # print('old',ai_response,'old')
+    # print('matches',matches,'matches')
     if not matches:
-        raise ValueError("未找到有效的JSON结构化内容（列表），确保其为有效的JSON格式（#####--json内容--#####）。")
+        raise ValueError("未找到有效的JSON结构化内容（列表），确保其为有效的JSON格式（```json字典内容end```）。")
 
     result_list = []
     errors = []
     for i, json_content in enumerate(matches):
         try:
             # 使用 json.loads() 替换 eval()
-            structured_data = json.loads(json_content.strip())
+            # ```json
+
+            json_content=json_content.replace("```json",'').replace("end```",'')
+            structured_data = eval(json_content)
             result_list.append(structured_data)
         except json.JSONDecodeError as e:
-            error_msg = f"无法解析第 {i+1} 个JSON块: {e}. 内容: '{json_content[:100]}...'"
+            error_msg = f"无法解析第 {i+1} 个JSON块: {e}. 内容: '{json_content[:300]}...'"
             logger.error(error_msg) # Use logger
             errors.append(error_msg)
             # Decide if you want to continue or raise immediately
             # continue
         except Exception as e: # Catch other potential errors during parsing
-            error_msg = f"解析第 {i+1} 个JSON块时发生意外错误: {e}. 内容: '{json_content[:100]}...'"
+            error_msg = f"解析第 {i+1} 个JSON块时发生意外错误: {e}. 内容: '{json_content[:300]}...'"
             logger.error(error_msg) # Use logger
             errors.append(error_msg)
             # continue
@@ -148,7 +117,7 @@ def extract_json_list(ai_response: str) -> List[Dict[str, Any]]:
     # if.txt errors:
     #     raise ValueError(f"解析JSON列表时出错:\n" + "\n".join(errors))
 
-    return result_list
+    return result_list,errors
 
 
 class AutoCoder:
@@ -204,7 +173,9 @@ class AutoCoder:
         self.cmd_exec = ParallelExecutor(config=self.config, program_check=self.cmd_check)
 
         # Load history if it exists
+        logger.info("Load history")
         self.load_his_chat()
+        logger.info("Load history successful!")
 
     def _get_chat_history_path(self) -> str:
         """Returns the path to the chat history file for the current task."""
@@ -294,14 +265,14 @@ class AutoCoder:
             # Note: This call is synchronous within the monitor thread's callback.
             # Consider making chat_api.chat async or running this in a separate thread
             # if AI response time becomes a bottleneck for monitoring.
-            ai_response_text = self.chat_api.chat(f"#####--\n{feedback_str}\n--#####") # Wrap in delimiters
+            ai_response_text = self.chat_api.chat(f"```json\n{feedback_str}\nend```") # Wrap in delimiters
             logger.debug(f"Received AI response to feedback: {ai_response_text}...")
 
             # Parse AI response to check for termination commands
             terminate_list = []
             try:
                 # AI might respond with one or more JSON blocks
-                structured_responses = extract_json_list(ai_response_text)
+                structured_responses,errors = extract_json_list(ai_response_text)
                 for response_data in structured_responses:
                     # Check if it's a program check request (termination instruction)
                     if response_data.get('type') == 'check_program':
@@ -315,9 +286,11 @@ class AutoCoder:
                                     terminate_list.append(op.name)
                         else:
                              logger.warning(f"Parsed 'check_program' type but got unexpected object: {type(parsed_request)}")
+                if errors:
+                    logger.info(f"[Error] Received program check request from AI: {errors}")
                     # else: ignore other response types in this context
             except ValueError as e:
-                pass
+                logger.info(f"[Value Error] Received program check request from AI: {e}")
                 # logger.info(f"ai connect: {ai_response_text}")
             except Exception as e:
                  logger.error(f"Error processing AI response to feedback: {e}", exc_info=True)
@@ -336,17 +309,17 @@ class AutoCoder:
         # Agent starts with the initial user request or loaded history
         # If history is loaded, self.chat_content might be ignored unless explicitly used
         current_input = self.chat_content # Start with the initial request if no history or if logic dictates
-        logger.debug(f"Initial input for loop: {current_input[:200]}...")
+        logger.debug(f"Initial input for loop: {current_input[:300]}...")
 
         finish = False
         loop_count = 0
         while not finish:
             loop_count += 1
             logger.info(f"--- Agent Loop Iteration {loop_count} ---")
-            logger.debug(f"Sending input to LLM: {current_input[:500]}...")
+            logger.debug(f"Sending input to LLM: {current_input[:1000]}...")
             # Send the current input (either initial request or feedback from previous step)
             response = self.chat_api.chat(current_input)
-            logger.debug(f"Received response from LLM: {response[:500]}...")
+            logger.debug(f"Received response from LLM: {response[:1000]}...")
             # History is saved automatically by chat_api via save_func
 
             structured_data_list = []
@@ -354,14 +327,17 @@ class AutoCoder:
 
             try:
                 # Use the improved function to extract potentially multiple JSON blocks
-                structured_data_list = extract_json_list(response)
+                structured_data_list,error = extract_json_list(response)
+                if error:
+                    next_input_parts.append(error)
             except ValueError as e:
                 # Handle case where no valid JSON blocks are found in the response
-                error_message = f"ValueError: {e}\n[系统报错]：AI响应中未找到有效的结构化文本（#####--...--#####）。请确保AI按要求格式返回。原始响应: {response[:500]}..."
-                logger.error(error_message)
+                error_message = f"ValueError: {e}\n[系统报错]：AI响应中未找到有效的结构化文本（```json...end```）。请确保AI按要求格式返回。原始响应: {response[:500]}..."
+                logger.info(error_message)
                 current_input = error_message # Send error back to AI
                 continue # Skip processing this response and ask AI again
-
+            # if error:
+            #     print(error)
             logger.info(f'Received {len(structured_data_list)} command blocks from AI.')
 
             # Process each structured command block
@@ -369,15 +345,16 @@ class AutoCoder:
                 logger.info(f"--- Processing command block {i+1}/{len(structured_data_list)} ---")
                 try:
                     # Log the raw command block at DEBUG level
-                    logger.debug(f"Raw command block {i+1}: {json.dumps(structured_data, indent=2, ensure_ascii=False)}")
+                    logger.info(f"Raw command block {i+1}: {json.dumps(structured_data, indent=2, ensure_ascii=False)}")
                 except Exception: # Fallback for non-serializable data if any
-                    logger.debug(f"Raw command block {i+1} (non-serializable): {structured_data}")
+                    logger.error(f"Raw command block {i+1} (non-serializable): {structured_data}")
 
                 try:
+                    # print()
                     operation_req = Parser.parse_request(structured_data)
                     logger.info(f"Parsed command {i+1}: Type='{operation_req.type}', Reason='{getattr(operation_req, 'reason', 'N/A')}'")
                 except (TypeError, ValueError, KeyError) as e:
-                    error_message = f"[系统报错] Error parsing command block {i+1}: {e}. Content: {str(structured_data)[:200]}..."
+                    error_message = f"[系统报错] Error parsing command block {i+1}: {e}. Content: {str(structured_data)}..."
                     logger.error(error_message)
                     next_input_parts.append(error_message)
                     continue # Skip this invalid command
@@ -399,8 +376,8 @@ class AutoCoder:
                             logger.debug(f"  Attempting file op: {action.action_type} on {action.path}")
                             file_op_feed: FileOperationFeedback = self.file_exec.execute_file_operation(action)
                             file_results.append(file_op_feed)
-                            log_level = logging.INFO if file_op_feed.status else logging.WARNING
-                            logger.log(log_level, f"    - File op {action.action_type} {action.path}: {'Success' if file_op_feed.action_type else 'Failed'}. Msg: {file_op_feed.content}")
+                            # log_level = logging.INFO if file_op_feed.status else logging.WARNING
+                            # logger.log(log_level, f"    - File op {action.action_type} {action.path}: {'Success' if file_op_feed.action_type else 'Failed'}. Msg: {file_op_feed.content}")
                         except Exception as e:
                             logger.error(f"    - Unhandled exception during file op {action.action_type} {action.path}: {e}", exc_info=True)
                             file_results.append(FileOperationFeedback(path=action.path,  status=FeedbackStatus.FAILURE, error_detail=f"Unhandled exception: {e}"))
@@ -442,7 +419,7 @@ class AutoCoder:
                     program_execs_result=[p.to_json() for p in program_results_list] # Convert result objects to dicts
                 )
                 # Wrap the final operation response in delimiters for the AI
-                feedback_text = f"#####--\n{operation_res.to_structured_text()}\n--#####"
+                feedback_text = f"```json\n{operation_res.to_structured_text()}\nend```"
                 next_input_parts.append(feedback_text)
 
                 logger.info(f"--- Command block {i+1} processing complete ---")
@@ -454,6 +431,7 @@ class AutoCoder:
                 break
 
             # Combine all feedback for the next turn
+            next_input_parts=str(next_input_parts)
             current_input = "\n".join(next_input_parts)
             if not current_input: # Handle case where all commands failed parsing
                  logger.warning("All command blocks failed parsing. Sending system prompt.")
@@ -480,7 +458,7 @@ def main():
         logger.info("Configuration loaded successfully.")
     except (FileNotFoundError, ValueError, RuntimeError) as e:
         # Logger might not be set up, so print is safer here
-        print(f"CRITICAL: Error loading configuration: {e}")
+        logger.error(f"CRITICAL: Error loading configuration: {e}")
         # Attempt to log as well, might fail if setup_logging failed
         try:
             logger.critical(f"Error loading configuration: {e}", exc_info=True)
@@ -516,4 +494,6 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+
+    print(operation_req)
+    # main()

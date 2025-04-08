@@ -405,6 +405,7 @@ class Parser:
     @classmethod
     def parse_request(cls, json_data: Dict) -> Union[OperationRequest, ProgramCheckRequest, WorkFinishNote]:
         """解析操作请求"""
+        # print('json_data',json_data)
         if json_data['type'] == 'finish':
             # 程序执行结束，通知用户，可以给出文档，建议，总结之类的内容作为收尾
             return WorkFinishNote(summary=json_data["metadata"]["summary"])

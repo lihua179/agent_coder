@@ -9,9 +9,9 @@
 import os
 import shutil
 import locale
-import logging  # Added logging
-from typing import List, Optional, Dict, Any  # Added Any for config type hint
 
+from typing import List, Optional, Dict, Any  # Added Any for config type hint
+from .tool import logger
 # Import data structures from data_struct.py
 from .data_struct import (
     FileActionType,
@@ -22,12 +22,6 @@ from .data_struct import (
     CodeBlock  # Keep CodeBlock if needed internally, though it's also in data_struct
 )
 
-__all__ = [
-    "FileExecutor"
-]
-
-# Setup logger for this module
-logger = logging.getLogger(__name__)
 
 
 # Helper functions using config

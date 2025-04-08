@@ -7,12 +7,13 @@
 """
 
 import sys
-import logging # Added logging
+# import logging # Added logging
 from openai import OpenAI
 import time # Added missing time import (used later)
 import json # Added missing json import (used later)
 from typing import List, Dict # Added missing typing import
-
+from .tool import logger
+import openai
 # AProject/A/aaa世界规律/期货认知/程序/ai/code_agent/main_pro/CodeAgent/api/chat_api.py
 
 __all__ = [
@@ -20,8 +21,7 @@ __all__ = [
     "CharPrinter"
 ]
 
-# Setup logger for this module
-logger = logging.getLogger(__name__)
+
 
 
 # 其他代码...
@@ -37,9 +37,13 @@ class CharPrinter:
 
     def add_char(self, char):
         """添加单个字符到输出缓冲区"""
-        if char in ('\n', '\r'):
-            self.flush()
-            self.buffer.append(char)
+        try:
+            if char in ('\n', '\r'):
+                self.flush()
+                self.buffer.append(char)
+                return
+        except UnicodeEncodeError as e:
+            print(e)
             return
 
         # 计算新增字符的可见长度
@@ -158,6 +162,14 @@ class ChatAPI:
                 # max_tokens can be added here if needed
             )
             logger.info("API request successful, streaming response...")
+        except openai.InternalServerError as e:
+            time.sleep(5)
+            logger.error(f"API call failed: {e}", exc_info=True)
+            raise  # Re-raise the exception to be handled by the caller (.chat method)
+        except openai.RateLimitError as e:
+            time.sleep(5)
+            logger.error(f"API call failed: {e}", exc_info=True)
+            raise  # Re-raise the exception to be handled by the caller (.chat method)
         except Exception as api_error:
             logger.error(f"API call failed: {api_error}", exc_info=True)
             raise # Re-raise the exception to be handled by the caller (.chat method)
